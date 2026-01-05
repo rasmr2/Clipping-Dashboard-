@@ -13,7 +13,8 @@ datasource db {
 // A clipper who creates clips
 model Clipper {
   id        String   @id @default(cuid())
-  name      String
+  name      String   // Display name (e.g., "Kesvi - rasmrfeed")
+  clipperGroup String? // Group name for consolidation (e.g., "Kesvi")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -24,6 +25,8 @@ model Clipper {
 
   // Relations
   posts Post[]
+
+  @@index([clipperGroup])
 }
 
 // A single post/video/clip on a platform

@@ -15,14 +15,16 @@ export class YouTubeScraper implements SocialMediaScraper {
   }
 
   async getChannelPosts(channelUrl: string): Promise<PostMetrics[]> {
-    // Extract channel ID or handle from URL
-    const channelId = this.extractChannelId(channelUrl);
-    if (!channelId) return [];
+    // Extract channel ID or handle from URL/handle string
+    const { type, value } = this.extractChannelIdentifier(channelUrl);
+    if (!value) return [];
 
     try {
       // Get channel uploads playlist
+      // Use 'forHandle' for handles (@username), 'id' for channel IDs
+      const param = type === "handle" ? `forHandle=${value}` : `id=${value}`;
       const channelRes = await fetch(
-        `https://${this.apiHost}/channels?part=contentDetails&id=${channelId}`,
+        `https://${this.apiHost}/channels?part=contentDetails&${param}`,
         {
           headers: {
             "X-RapidAPI-Key": this.apiKey,
@@ -130,18 +132,41 @@ export class YouTubeScraper implements SocialMediaScraper {
     }
   }
 
-  private extractChannelId(url: string): string | null {
-    const patterns = [
-      /youtube\.com\/channel\/([a-zA-Z0-9_-]+)/,
-      /youtube\.com\/@([a-zA-Z0-9_-]+)/,
-      /youtube\.com\/c\/([a-zA-Z0-9_-]+)/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) return match[1];
+  private extractChannelIdentifier(input: string): { type: "handle" | "id"; value: string | null } {
+    // Handle direct @username format (e.g., "@RasmrFeed")
+    if (input.startsWith("@")) {
+      return { type: "handle", value: input.substring(1) };
     }
-    return null;
+
+    // Handle URLs with @username (e.g., "youtube.com/@RasmrFeed")
+    const handleMatch = input.match(/youtube\.com\/@([a-zA-Z0-9_-]+)/);
+    if (handleMatch) {
+      return { type: "handle", value: handleMatch[1] };
+    }
+
+    // Handle channel ID URLs (e.g., "youtube.com/channel/UC...")
+    const channelIdMatch = input.match(/youtube\.com\/channel\/([a-zA-Z0-9_-]+)/);
+    if (channelIdMatch) {
+      return { type: "id", value: channelIdMatch[1] };
+    }
+
+    // Handle custom URL (e.g., "youtube.com/c/ChannelName")
+    const customMatch = input.match(/youtube\.com\/c\/([a-zA-Z0-9_-]+)/);
+    if (customMatch) {
+      return { type: "handle", value: customMatch[1] };
+    }
+
+    // If it looks like a channel ID (starts with UC), use it directly
+    if (input.startsWith("UC") && input.length === 24) {
+      return { type: "id", value: input };
+    }
+
+    // Otherwise treat as a handle
+    if (input.length > 0) {
+      return { type: "handle", value: input };
+    }
+
+    return { type: "handle", value: null };
   }
 
   private extractVideoId(url: string): string | null {

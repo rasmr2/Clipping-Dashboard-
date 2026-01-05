@@ -2,17 +2,31 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw, Eye, Heart, MessageCircle, Share2, Youtube, Instagram } from "lucide-react";
+import { Plus, RefreshCw, Eye, Heart, MessageCircle, Share2, Youtube, Instagram, ChevronDown, Users, User, DollarSign } from "lucide-react";
 import AddClipperModal from "@/components/AddClipperModal";
+import DateRangePicker from "@/components/DateRangePicker";
 import { formatNumber } from "@/lib/utils";
 
 type Clipper = {
   id: string;
   name: string;
+  clipperGroup: string | null;
   youtubeChannel: string | null;
   tiktokUsername: string | null;
   instagramUsername: string | null;
   totalViews: number;
+  totalPayableViews: number;
+  totalLikes: number;
+  totalComments: number;
+  totalShares: number;
+  postCount: number;
+};
+
+type ClipperGroup = {
+  clipperGroup: string;
+  pages: Clipper[];
+  totalViews: number;
+  totalPayableViews: number;
   totalLikes: number;
   totalComments: number;
   totalShares: number;
@@ -21,15 +35,36 @@ type Clipper = {
 
 export default function Dashboard() {
   const [clippers, setClippers] = useState<Clipper[]>([]);
+  const [groupedClippers, setGroupedClippers] = useState<ClipperGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
 
+  // Filter state
+  const [viewMode, setViewMode] = useState<"clipper" | "page">("clipper");
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [showViewDropdown, setShowViewDropdown] = useState(false);
+  const [showGroupDropdown, setShowGroupDropdown] = useState(false);
+  const [fromDate, setFromDate] = useState<string | null>(null);
+  const [toDate, setToDate] = useState<string | null>(null);
+
   const fetchClippers = async () => {
     try {
-      const res = await fetch("/api/clippers");
-      const data = await res.json();
-      setClippers(data);
+      // Build query params with date filters
+      const params = new URLSearchParams();
+      if (fromDate) params.set("fromDate", fromDate);
+      if (toDate) params.set("toDate", toDate);
+      const dateQuery = params.toString();
+
+      // Fetch both grouped and ungrouped data
+      const [groupedRes, allRes] = await Promise.all([
+        fetch(`/api/clippers?grouped=true${dateQuery ? `&${dateQuery}` : ""}`),
+        fetch(`/api/clippers${dateQuery ? `?${dateQuery}` : ""}`),
+      ]);
+      const groupedData = await groupedRes.json();
+      const allData = await allRes.json();
+      setGroupedClippers(groupedData);
+      setClippers(allData);
     } catch (error) {
       console.error("Failed to fetch clippers:", error);
     } finally {
@@ -39,7 +74,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchClippers();
-  }, []);
+  }, [fromDate, toDate]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -53,16 +88,32 @@ export default function Dashboard() {
     }
   };
 
-  const totalStats = clippers.reduce(
-    (acc, clipper) => ({
-      views: acc.views + clipper.totalViews,
-      likes: acc.likes + clipper.totalLikes,
-      comments: acc.comments + clipper.totalComments,
-      shares: acc.shares + clipper.totalShares,
-      posts: acc.posts + clipper.postCount,
+  // Get unique clipper groups for filter dropdown
+  const clipperGroups = [...new Set(clippers.map(c => c.clipperGroup).filter(Boolean))] as string[];
+
+  // Filter clippers based on selection
+  const filteredClippers = selectedGroup
+    ? clippers.filter(c => c.clipperGroup === selectedGroup)
+    : clippers;
+
+  // Calculate total stats based on current view
+  const displayData = viewMode === "clipper" && !selectedGroup ? groupedClippers : filteredClippers;
+  const totalStats = displayData.reduce(
+    (acc, item) => ({
+      views: acc.views + item.totalViews,
+      payableViews: acc.payableViews + item.totalPayableViews,
+      likes: acc.likes + item.totalLikes,
+      comments: acc.comments + item.totalComments,
+      shares: acc.shares + item.totalShares,
+      posts: acc.posts + item.postCount,
     }),
-    { views: 0, likes: 0, comments: 0, shares: 0, posts: 0 }
+    { views: 0, payableViews: 0, likes: 0, comments: 0, shares: 0, posts: 0 }
   );
+
+  const handleDateChange = (from: string | null, to: string | null) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -90,13 +141,100 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        {/* Filters */}
+        <div className="flex gap-4 mb-6">
+          {/* View Mode Toggle */}
+          <div className="relative">
+            <button
+              onClick={() => setShowViewDropdown(!showViewDropdown)}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              {viewMode === "clipper" ? <Users size={16} /> : <User size={16} />}
+              <span>{viewMode === "clipper" ? "By Clipper" : "By Page"}</span>
+              <ChevronDown size={16} />
+            </button>
+            {showViewDropdown && (
+              <div className="absolute top-full left-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-10 min-w-[150px]">
+                <button
+                  onClick={() => { setViewMode("clipper"); setSelectedGroup(null); setShowViewDropdown(false); }}
+                  className={`w-full flex items-center gap-2 px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${viewMode === "clipper" && !selectedGroup ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                >
+                  <Users size={16} />
+                  By Clipper
+                </button>
+                <button
+                  onClick={() => { setViewMode("page"); setSelectedGroup(null); setShowViewDropdown(false); }}
+                  className={`w-full flex items-center gap-2 px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${viewMode === "page" && !selectedGroup ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                >
+                  <User size={16} />
+                  By Page
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Clipper Group Filter */}
+          <div className="relative">
+            <button
+              onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              <span>{selectedGroup || "All Clippers"}</span>
+              <ChevronDown size={16} />
+            </button>
+            {showGroupDropdown && (
+              <div className="absolute top-full left-0 mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-10 min-w-[150px]">
+                <button
+                  onClick={() => { setSelectedGroup(null); setShowGroupDropdown(false); }}
+                  className={`w-full text-left px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!selectedGroup ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                >
+                  All Clippers
+                </button>
+                {clipperGroups.map(group => (
+                  <button
+                    key={group}
+                    onClick={() => { setSelectedGroup(group); setViewMode("page"); setShowGroupDropdown(false); }}
+                    className={`w-full text-left px-4 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${selectedGroup === group ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                  >
+                    {group}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Date Range Filter */}
+          <DateRangePicker
+            fromDate={fromDate}
+            toDate={toDate}
+            onChange={handleDateChange}
+          />
+
+          {selectedGroup && (
+            <button
+              onClick={() => { setSelectedGroup(null); setViewMode("clipper"); }}
+              className="px-3 py-2 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+            >
+              Clear filter
+            </button>
+          )}
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
           <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-zinc-200 dark:border-zinc-800">
             <div className="flex items-center gap-2 text-zinc-500 mb-1">
               <Eye size={16} />
               <span className="text-sm">Total Views</span>
             </div>
             <p className="text-2xl font-bold">{formatNumber(totalStats.views)}</p>
+          </div>
+          <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-1">
+              <DollarSign size={16} />
+              <span className="text-sm">Payable Views</span>
+            </div>
+            <p className="text-2xl font-bold text-green-700 dark:text-green-300">{formatNumber(totalStats.payableViews)}</p>
           </div>
           <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-zinc-200 dark:border-zinc-800">
             <div className="flex items-center gap-2 text-zinc-500 mb-1">
@@ -127,21 +265,77 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Leaderboard */}
         <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800">
           <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-            <h2 className="text-lg font-semibold">Clipper Leaderboard</h2>
+            <h2 className="text-lg font-semibold">
+              {viewMode === "clipper" && !selectedGroup ? "Clipper Leaderboard" : "Page Leaderboard"}
+              {selectedGroup && ` - ${selectedGroup}`}
+            </h2>
             <p className="text-sm text-zinc-500">Ranked by total views</p>
           </div>
 
           {loading ? (
             <div className="p-8 text-center text-zinc-500">Loading...</div>
-          ) : clippers.length === 0 ? (
+          ) : displayData.length === 0 ? (
             <div className="p-8 text-center text-zinc-500">
               <p>No clippers yet. Add your first clipper to get started!</p>
             </div>
-          ) : (
+          ) : viewMode === "clipper" && !selectedGroup ? (
+            // Grouped view - show consolidated clipper stats
             <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              {clippers.map((clipper, index) => (
+              {groupedClippers.map((group, index) => (
+                <button
+                  key={group.clipperGroup}
+                  onClick={() => { setSelectedGroup(group.clipperGroup); setViewMode("page"); }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors text-left"
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                      index === 0
+                        ? "bg-yellow-100 text-yellow-700"
+                        : index === 1
+                        ? "bg-zinc-200 text-zinc-700"
+                        : index === 2
+                        ? "bg-orange-100 text-orange-700"
+                        : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800"
+                    }`}
+                  >
+                    {index + 1}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold">{group.clipperGroup}</h3>
+                    <p className="text-sm text-zinc-500">{group.pages.length} page{group.pages.length !== 1 ? "s" : ""}</p>
+                  </div>
+                  <div className="grid grid-cols-5 gap-4 text-right">
+                    <div>
+                      <p className="text-sm text-zinc-500">Views</p>
+                      <p className="font-semibold">{formatNumber(group.totalViews)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-green-600">Payable</p>
+                      <p className="font-semibold text-green-600">{formatNumber(group.totalPayableViews)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-zinc-500">Likes</p>
+                      <p className="font-semibold">{formatNumber(group.totalLikes)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-zinc-500">Comments</p>
+                      <p className="font-semibold">{formatNumber(group.totalComments)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-zinc-500">Posts</p>
+                      <p className="font-semibold">{group.postCount}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            // Page view - show individual pages
+            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              {filteredClippers.map((clipper, index) => (
                 <Link
                   key={clipper.id}
                   href={`/clippers/${clipper.id}`}
@@ -178,10 +372,14 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-4 gap-6 text-right">
+                  <div className="grid grid-cols-5 gap-4 text-right">
                     <div>
                       <p className="text-sm text-zinc-500">Views</p>
                       <p className="font-semibold">{formatNumber(clipper.totalViews)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-green-600">Payable</p>
+                      <p className="font-semibold text-green-600">{formatNumber(clipper.totalPayableViews)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-zinc-500">Likes</p>

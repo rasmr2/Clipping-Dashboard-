@@ -2,9 +2,10 @@
 
 import { useState, useEffect, use } from "react";
 import Link from "next/link";
-import { ArrowLeft, Eye, Heart, MessageCircle, Share2, ExternalLink, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, Heart, MessageCircle, Share2, ExternalLink, Trash2, DollarSign } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { formatNumber, formatDate } from "@/lib/utils";
+import DateRangePicker from "@/components/DateRangePicker";
 
 type Post = {
   id: string;
@@ -12,6 +13,7 @@ type Post = {
   postUrl: string;
   title: string | null;
   views: number;
+  payableViews: number;
   likes: number;
   comments: number;
   shares: number;
@@ -30,6 +32,7 @@ type Clipper = {
   tiktokUsername: string | null;
   instagramUsername: string | null;
   totalViews: number;
+  totalPayableViews: number;
   totalLikes: number;
   totalComments: number;
   totalShares: number;
@@ -41,11 +44,18 @@ export default function ClipperDetailPage({ params }: { params: Promise<{ id: st
   const [clipper, setClipper] = useState<Clipper | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [fromDate, setFromDate] = useState<string | null>(null);
+  const [toDate, setToDate] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchClipper = async () => {
       try {
-        const res = await fetch(`/api/clippers/${id}`);
+        const params = new URLSearchParams();
+        if (fromDate) params.set("fromDate", fromDate);
+        if (toDate) params.set("toDate", toDate);
+        const query = params.toString();
+
+        const res = await fetch(`/api/clippers/${id}${query ? `?${query}` : ""}`);
         if (res.ok) {
           const data = await res.json();
           setClipper(data);
@@ -57,7 +67,12 @@ export default function ClipperDetailPage({ params }: { params: Promise<{ id: st
       }
     };
     fetchClipper();
-  }, [id]);
+  }, [id, fromDate, toDate]);
+
+  const handleDateChange = (from: string | null, to: string | null) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   const handleDelete = async () => {
     if (!confirm("Are you sure you want to delete this clipper and all their posts?")) return;
@@ -144,14 +159,30 @@ export default function ClipperDetailPage({ params }: { params: Promise<{ id: st
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* Date Filter */}
+        <div className="mb-6">
+          <DateRangePicker
+            fromDate={fromDate}
+            toDate={toDate}
+            onChange={handleDateChange}
+          />
+        </div>
+
         {/* Stats Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-zinc-200 dark:border-zinc-800">
             <div className="flex items-center gap-2 text-zinc-500 mb-1">
               <Eye size={16} />
               <span className="text-sm">Total Views</span>
             </div>
             <p className="text-2xl font-bold">{formatNumber(clipper.totalViews)}</p>
+          </div>
+          <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-1">
+              <DollarSign size={16} />
+              <span className="text-sm">Payable Views</span>
+            </div>
+            <p className="text-2xl font-bold text-green-700 dark:text-green-300">{formatNumber(clipper.totalPayableViews)}</p>
           </div>
           <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-zinc-200 dark:border-zinc-800">
             <div className="flex items-center gap-2 text-zinc-500 mb-1">
@@ -234,10 +265,17 @@ export default function ClipperDetailPage({ params }: { params: Promise<{ id: st
                       </p>
                     )}
                   </div>
-                  <div className="grid grid-cols-4 gap-4 text-right text-sm">
+                  <div className="grid grid-cols-5 gap-4 text-right text-sm">
                     <div>
                       <p className="text-zinc-500">Views</p>
                       <p className="font-semibold">{formatNumber(post.views)}</p>
+                    </div>
+                    <div>
+                      <p className="text-green-600">Payable</p>
+                      <p className={`font-semibold ${post.views > 1_000_000 ? "text-green-600" : ""}`}>
+                        {formatNumber(post.payableViews)}
+                        {post.views > 1_000_000 && <span className="text-xs ml-1">(capped)</span>}
+                      </p>
                     </div>
                     <div>
                       <p className="text-zinc-500">Likes</p>
