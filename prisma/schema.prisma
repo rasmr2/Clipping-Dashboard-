@@ -18,6 +18,7 @@ model Clipper {
   profilePicture String? // Profile picture URL
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  lastRefreshedAt DateTime? // Last time data was scraped from external APIs
 
   // Social media account links
   youtubeChannel    String?

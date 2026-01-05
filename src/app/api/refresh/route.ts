@@ -1,15 +1,22 @@
 import { prisma } from "@/lib/db";
 import { getScraper, isScrapingEnabled, PostMetrics } from "@/lib/scrapers";
 import { TikTokScraper } from "@/lib/scrapers/tiktok";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST() {
+// Cache duration in hours (skip scraping if refreshed within this time)
+const CACHE_DURATION_HOURS = 6;
+
+export async function POST(request: NextRequest) {
   if (!isScrapingEnabled()) {
     return NextResponse.json(
       { error: "Scraping not configured. Set RAPIDAPI_KEY environment variable." },
       { status: 400 }
     );
   }
+
+  // Check for force refresh query param
+  const forceRefresh = request.nextUrl.searchParams.get("force") === "true";
+  const cacheThreshold = new Date(Date.now() - CACHE_DURATION_HOURS * 60 * 60 * 1000);
 
   try {
     // Get all clippers
