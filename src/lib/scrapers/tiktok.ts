@@ -18,14 +18,18 @@ export class TikTokScraper implements SocialMediaScraper {
     // Clean username (remove @ if present)
     const cleanUsername = username.replace("@", "");
 
+    // Posts older than 6 weeks don't need refreshing
+    const sixWeeksAgo = new Date(Date.now() - 6 * 7 * 24 * 60 * 60 * 1000);
+
     try {
       const allVideos: PostMetrics[] = [];
       let cursor: string | undefined = undefined;
       let hasMore = true;
       const maxPages = 10; // Limit to prevent infinite loops (10 pages * 35 = 350 posts max)
       let pageCount = 0;
+      let reachedOldPosts = false;
 
-      while (hasMore && pageCount < maxPages) {
+      while (hasMore && pageCount < maxPages && !reachedOldPosts) {
         const apiUrl: string = cursor
           ? `https://${this.apiHost}/user/posts?unique_id=${cleanUsername}&count=35&cursor=${cursor}`
           : `https://${this.apiHost}/user/posts?unique_id=${cleanUsername}&count=35`;
@@ -44,28 +48,27 @@ export class TikTokScraper implements SocialMediaScraper {
 
         if (videos.length === 0) break;
 
-        const mappedVideos = videos.map((video: {
-          video_id: string;
-          title?: string;
-          cover?: string;
-          play_count: number;
-          digg_count: number;
-          comment_count: number;
-          share_count: number;
-          create_time: number;
-        }) => ({
-          postId: video.video_id,
-          postUrl: `https://tiktok.com/@${cleanUsername}/video/${video.video_id}`,
-          title: video.title,
-          thumbnail: video.cover,
-          views: video.play_count || 0,
-          likes: video.digg_count || 0,
-          comments: video.comment_count || 0,
-          shares: video.share_count || 0,
-          postedAt: new Date(video.create_time * 1000),
-        }));
+        for (const video of videos) {
+          const postedAt = new Date(video.create_time * 1000);
 
-        allVideos.push(...mappedVideos);
+          // Stop if we've reached posts older than 6 weeks
+          if (postedAt < sixWeeksAgo) {
+            reachedOldPosts = true;
+            break;
+          }
+
+          allVideos.push({
+            postId: video.video_id,
+            postUrl: `https://tiktok.com/@${cleanUsername}/video/${video.video_id}`,
+            title: video.title,
+            thumbnail: video.cover,
+            views: video.play_count || 0,
+            likes: video.digg_count || 0,
+            comments: video.comment_count || 0,
+            shares: video.share_count || 0,
+            postedAt,
+          });
+        }
 
         // Check for pagination cursor
         cursor = data.data?.cursor;
@@ -73,12 +76,12 @@ export class TikTokScraper implements SocialMediaScraper {
         pageCount++;
 
         // Small delay to avoid rate limiting
-        if (hasMore) {
+        if (hasMore && !reachedOldPosts) {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
 
-      console.log(`TikTok: Fetched ${allVideos.length} posts for @${cleanUsername} (${pageCount} pages)`);
+      console.log(`TikTok: Fetched ${allVideos.length} recent posts for @${cleanUsername} (${pageCount} pages, stopped at 6 weeks)`);
       return allVideos;
     } catch (error) {
       console.error("TikTok scraper error:", error);

@@ -53,6 +53,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
 
   // Main tab state
   const [mainTab, setMainTab] = useState<"clippers" | "topics" | "frequency">("clippers");
@@ -65,6 +66,16 @@ export default function Dashboard() {
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
 
+  const fetchRefreshStatus = async () => {
+    try {
+      const res = await fetch("/api/refresh/status");
+      const data = await res.json();
+      setLastRefreshedAt(data.lastRefreshedAt);
+    } catch (error) {
+      console.error("Failed to fetch refresh status:", error);
+    }
+  };
+
   const fetchClippers = async () => {
     try {
       // Build query params with date filters
@@ -73,11 +84,12 @@ export default function Dashboard() {
       if (toDate) params.set("toDate", toDate);
       const dateQuery = params.toString();
 
-      // Fetch clippers, grouped data, and hashtags
+      // Fetch clippers, grouped data, hashtags, and refresh status
       const [groupedRes, allRes, hashtagsRes] = await Promise.all([
         fetch(`/api/clippers?grouped=true${dateQuery ? `&${dateQuery}` : ""}`),
         fetch(`/api/clippers${dateQuery ? `?${dateQuery}` : ""}`),
         fetch(`/api/hashtags?limit=50${dateQuery ? `&${dateQuery}` : ""}`),
+        fetchRefreshStatus(),
       ]);
       const groupedData = await groupedRes.json();
       const allData = await allRes.json();
@@ -99,13 +111,33 @@ export default function Dashboard() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch("/api/refresh", { method: "POST" });
+      const res = await fetch("/api/refresh", { method: "POST" });
+      const data = await res.json();
+      if (data.lastRefreshedAt) {
+        setLastRefreshedAt(data.lastRefreshedAt);
+      }
       await fetchClippers();
     } catch (error) {
       console.error("Refresh failed:", error);
     } finally {
       setRefreshing(false);
     }
+  };
+
+  // Format relative time (e.g., "5 minutes ago")
+  const formatRelativeTime = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
   };
 
   // Get unique clipper groups for filter dropdown
@@ -140,14 +172,19 @@ export default function Dashboard() {
       <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold">Clipper Dashboard</h1>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {lastRefreshedAt && (
+              <span className="text-sm text-zinc-500" title={new Date(lastRefreshedAt).toLocaleString()}>
+                Updated {formatRelativeTime(lastRefreshedAt)}
+              </span>
+            )}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
               className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
             >
               <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
-              Refresh Data
+              Refresh
             </button>
             <button
               onClick={() => setShowAddModal(true)}

@@ -3,8 +3,8 @@ import { getScraper, isScrapingEnabled, PostMetrics } from "@/lib/scrapers";
 import { TikTokScraper } from "@/lib/scrapers/tiktok";
 import { NextRequest, NextResponse } from "next/server";
 
-// Cache duration in hours (skip scraping if refreshed within this time)
-const CACHE_DURATION_HOURS = 6;
+// Cache duration in hours (skip clipper if refreshed within this time)
+const CACHE_DURATION_HOURS = 1;
 
 export async function POST(request: NextRequest) {
   if (!isScrapingEnabled()) {
@@ -19,8 +19,31 @@ export async function POST(request: NextRequest) {
   const cacheThreshold = new Date(Date.now() - CACHE_DURATION_HOURS * 60 * 60 * 1000);
 
   try {
-    // Get all clippers
-    const clippers = await prisma.clipper.findMany();
+    // Get all clippers, optionally filtering by cache threshold
+    const clippers = await prisma.clipper.findMany({
+      where: forceRefresh ? undefined : {
+        OR: [
+          { lastRefreshedAt: null },
+          { lastRefreshedAt: { lt: cacheThreshold } }
+        ]
+      }
+    });
+
+    // If all clippers are cached, return early
+    if (clippers.length === 0) {
+      const lastRefresh = await prisma.clipper.findFirst({
+        orderBy: { lastRefreshedAt: "desc" },
+        select: { lastRefreshedAt: true }
+      });
+      return NextResponse.json({
+        success: true,
+        cached: true,
+        message: "All clippers were refreshed within the last hour",
+        lastRefreshedAt: lastRefresh?.lastRefreshedAt,
+        newPosts: 0,
+        updatedPosts: 0,
+      });
+    }
 
     let totalPostsUpdated = 0;
     let totalNewPosts = 0;
@@ -68,12 +91,20 @@ export async function POST(request: NextRequest) {
           console.error(`Error scraping ${platform} for ${clipper.name}:`, error);
         }
       }
+
+      // Update lastRefreshedAt for this clipper
+      await prisma.clipper.update({
+        where: { id: clipper.id },
+        data: { lastRefreshedAt: new Date() }
+      });
     }
 
     return NextResponse.json({
       success: true,
       newPosts: totalNewPosts,
       updatedPosts: totalPostsUpdated,
+      lastRefreshedAt: new Date(),
+      clippersRefreshed: clippers.length,
     });
   } catch (error) {
     console.error("Refresh error:", error);
