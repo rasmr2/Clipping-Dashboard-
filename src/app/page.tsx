@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw, Eye, Heart, MessageCircle, Share2, Youtube, Instagram, ChevronDown, Users, User, DollarSign, Hash, TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
+import { Plus, RefreshCw, Eye, Heart, MessageCircle, Share2, Youtube, Instagram, ChevronDown, Users, User, DollarSign, Hash, TrendingUp, TrendingDown, BarChart2, UserPlus } from "lucide-react";
 import AddClipperModal from "@/components/AddClipperModal";
+import AddPageModal from "@/components/AddPageModal";
 import DateRangePicker from "@/components/DateRangePicker";
 import PostingCalendarHeatmap from "@/components/PostingCalendarHeatmap";
 import { formatNumber } from "@/lib/utils";
@@ -53,6 +54,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddPageModal, setShowAddPageModal] = useState(false);
+  const [addPageToGroup, setAddPageToGroup] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
 
   // Main tab state
@@ -122,6 +125,12 @@ export default function Dashboard() {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const openAddPageModal = (clipperGroup: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    setAddPageToGroup(clipperGroup);
+    setShowAddPageModal(true);
   };
 
   // Format relative time (e.g., "5 minutes ago")
@@ -411,6 +420,13 @@ export default function Dashboard() {
                     <h3 className="font-semibold">{group.clipperGroup}</h3>
                     <p className="text-sm text-zinc-500">{group.pages.length} page{group.pages.length !== 1 ? "s" : ""}</p>
                   </div>
+                  <button
+                    onClick={(e) => openAddPageModal(group.clipperGroup, e)}
+                    className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                    title="Add page to this clipper"
+                  >
+                    <UserPlus size={18} />
+                  </button>
                   <div className="grid grid-cols-5 gap-4 text-right">
                     <div>
                       <p className="text-sm text-zinc-500">Views</p>
@@ -587,6 +603,16 @@ export default function Dashboard() {
       <AddClipperModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
+        onSuccess={fetchClippers}
+      />
+
+      <AddPageModal
+        isOpen={showAddPageModal}
+        clipperGroup={addPageToGroup || ""}
+        onClose={() => {
+          setShowAddPageModal(false);
+          setAddPageToGroup(null);
+        }}
         onSuccess={fetchClippers}
       />
     </div>
