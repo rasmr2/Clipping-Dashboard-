@@ -26,11 +26,11 @@ export class TikTokScraper implements SocialMediaScraper {
       let pageCount = 0;
 
       while (hasMore && pageCount < maxPages) {
-        const url = cursor
+        const apiUrl: string = cursor
           ? `https://${this.apiHost}/user/posts?unique_id=${cleanUsername}&count=35&cursor=${cursor}`
           : `https://${this.apiHost}/user/posts?unique_id=${cleanUsername}&count=35`;
 
-        const res = await fetch(url, {
+        const res = await fetch(apiUrl, {
           headers: {
             "X-RapidAPI-Key": this.apiKey,
             "X-RapidAPI-Host": this.apiHost,
@@ -83,6 +83,32 @@ export class TikTokScraper implements SocialMediaScraper {
     } catch (error) {
       console.error("TikTok scraper error:", error);
       return [];
+    }
+  }
+
+  async getUserInfo(username: string): Promise<{ profilePicture: string | null }> {
+    const cleanUsername = username.replace("@", "");
+
+    try {
+      const res = await fetch(
+        `https://${this.apiHost}/user/info?unique_id=${cleanUsername}`,
+        {
+          headers: {
+            "X-RapidAPI-Key": this.apiKey,
+            "X-RapidAPI-Host": this.apiHost,
+          },
+        }
+      );
+
+      if (!res.ok) return { profilePicture: null };
+
+      const data = await res.json();
+      const avatar = data.data?.user?.avatarLarger || data.data?.user?.avatarMedium || data.data?.user?.avatarThumb;
+
+      return { profilePicture: avatar || null };
+    } catch (error) {
+      console.error("TikTok user info error:", error);
+      return { profilePicture: null };
     }
   }
 

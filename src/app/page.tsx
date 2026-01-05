@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw, Eye, Heart, MessageCircle, Share2, Youtube, Instagram, ChevronDown, Users, User, DollarSign, Hash, TrendingUp, TrendingDown } from "lucide-react";
+import { Plus, RefreshCw, Eye, Heart, MessageCircle, Share2, Youtube, Instagram, ChevronDown, Users, User, DollarSign, Hash, TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
 import AddClipperModal from "@/components/AddClipperModal";
 import DateRangePicker from "@/components/DateRangePicker";
+import PostingCalendarHeatmap from "@/components/PostingCalendarHeatmap";
 import { formatNumber } from "@/lib/utils";
 
 type Clipper = {
@@ -54,7 +55,7 @@ export default function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Main tab state
-  const [mainTab, setMainTab] = useState<"clippers" | "topics">("clippers");
+  const [mainTab, setMainTab] = useState<"clippers" | "topics" | "frequency">("clippers");
 
   // Filter state
   const [viewMode, setViewMode] = useState<"clipper" | "page">("clipper");
@@ -181,6 +182,17 @@ export default function Dashboard() {
             >
               <Hash size={16} />
               Topics
+            </button>
+            <button
+              onClick={() => setMainTab("frequency")}
+              className={`flex items-center gap-2 px-4 py-3 font-medium border-b-2 transition-colors ${
+                mainTab === "frequency"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              }`}
+            >
+              <BarChart2 size={16} />
+              Frequency
             </button>
           </div>
         </div>
@@ -527,6 +539,11 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Frequency Tab Content */}
+        {mainTab === "frequency" && (
+          <PostingCalendarHeatmap fromDate={fromDate} toDate={toDate} />
         )}
       </main>
 

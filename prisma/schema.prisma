@@ -15,6 +15,7 @@ model Clipper {
   id        String   @id @default(cuid())
   name      String   // Display name (e.g., "Kesvi - rasmrfeed")
   clipperGroup String? // Group name for consolidation (e.g., "Kesvi")
+  profilePicture String? // Profile picture URL
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

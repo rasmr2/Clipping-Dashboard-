@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getScraper, isScrapingEnabled, PostMetrics } from "@/lib/scrapers";
+import { TikTokScraper } from "@/lib/scrapers/tiktok";
 import { NextResponse } from "next/server";
 
 export async function POST() {
@@ -38,6 +39,22 @@ export async function POST() {
               totalNewPosts++;
             } else {
               totalPostsUpdated++;
+            }
+          }
+
+          // Fetch and update profile picture for TikTok accounts (if not already set)
+          if (platform === "tiktok" && !clipper.profilePicture) {
+            try {
+              const tiktokScraper = scraper as TikTokScraper;
+              const userInfo = await tiktokScraper.getUserInfo(identifier);
+              if (userInfo.profilePicture) {
+                await prisma.clipper.update({
+                  where: { id: clipper.id },
+                  data: { profilePicture: userInfo.profilePicture },
+                });
+              }
+            } catch (e) {
+              console.error(`Error fetching profile picture for ${clipper.name}:`, e);
             }
           }
         } catch (error) {
