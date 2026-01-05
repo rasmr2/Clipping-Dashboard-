@@ -2,12 +2,16 @@ import { prisma } from "@/lib/db";
 import { getScraper, isScrapingEnabled, PostMetrics } from "@/lib/scrapers";
 import { TikTokScraper } from "@/lib/scrapers/tiktok";
 import { NextRequest, NextResponse } from "next/server";
+import { logRequest } from "@/lib/logger";
 
 // Cache duration in hours (skip clipper if refreshed within this time)
 const CACHE_DURATION_HOURS = 1;
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   if (!isScrapingEnabled()) {
+    logRequest(request, 400, startTime, "Scraping not configured");
     return NextResponse.json(
       { error: "Scraping not configured. Set RAPIDAPI_KEY environment variable." },
       { status: 400 }
@@ -35,6 +39,7 @@ export async function POST(request: NextRequest) {
         orderBy: { lastRefreshedAt: "desc" },
         select: { lastRefreshedAt: true }
       });
+      logRequest(request, 200, startTime);
       return NextResponse.json({
         success: true,
         cached: true,
@@ -99,6 +104,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    logRequest(request, 200, startTime);
     return NextResponse.json({
       success: true,
       newPosts: totalNewPosts,
@@ -108,6 +114,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Refresh error:", error);
+    logRequest(request, 500, startTime, String(error));
     return NextResponse.json(
       { error: "Failed to refresh data" },
       { status: 500 }

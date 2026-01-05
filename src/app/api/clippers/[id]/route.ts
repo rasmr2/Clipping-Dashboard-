@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { UpdateClipperSchema, validateBody } from "@/lib/validation";
+import { logRequest } from "@/lib/logger";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -11,71 +13,80 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { id } = await params;
-  const { searchParams } = new URL(request.url);
-  const fromDate = searchParams.get("fromDate");
-  const toDate = searchParams.get("toDate");
+  const startTime = Date.now();
 
-  // Build date filter for posts
-  const dateFilter: { postedAt?: { gte?: Date; lte?: Date } } = {};
-  if (fromDate || toDate) {
-    dateFilter.postedAt = {};
-    if (fromDate) dateFilter.postedAt.gte = new Date(fromDate);
-    if (toDate) {
-      const endDate = new Date(toDate);
-      endDate.setHours(23, 59, 59, 999);
-      dateFilter.postedAt.lte = endDate;
+  try {
+    const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const fromDate = searchParams.get("fromDate");
+    const toDate = searchParams.get("toDate");
+
+    // Build date filter for posts
+    const dateFilter: { postedAt?: { gte?: Date; lte?: Date } } = {};
+    if (fromDate || toDate) {
+      dateFilter.postedAt = {};
+      if (fromDate) dateFilter.postedAt.gte = new Date(fromDate);
+      if (toDate) {
+        const endDate = new Date(toDate);
+        endDate.setHours(23, 59, 59, 999);
+        dateFilter.postedAt.lte = endDate;
+      }
     }
-  }
 
-  const clipper = await prisma.clipper.findUnique({
-    where: { id },
-    include: {
-      posts: {
-        where: Object.keys(dateFilter).length > 0 ? dateFilter : undefined,
-        include: {
-          snapshots: {
-            orderBy: { recordedAt: "desc" },
-            take: 30, // Last 30 snapshots for charts
+    const clipper = await prisma.clipper.findUnique({
+      where: { id },
+      include: {
+        posts: {
+          where: Object.keys(dateFilter).length > 0 ? dateFilter : undefined,
+          include: {
+            snapshots: {
+              orderBy: { recordedAt: "desc" },
+              take: 30, // Last 30 snapshots for charts
+            },
           },
+          orderBy: { views: "desc" },
         },
-        orderBy: { views: "desc" },
       },
-    },
-  });
+    });
 
-  if (!clipper) {
-    return NextResponse.json({ error: "Clipper not found" }, { status: 404 });
+    if (!clipper) {
+      logRequest(request, 404, startTime, "Clipper not found");
+      return NextResponse.json({ error: "Clipper not found" }, { status: 404 });
+    }
+
+    // Payable views cap: 1,000,000 per post
+    const PAYABLE_VIEW_CAP = 1_000_000;
+
+    // Calculate totals
+    const totalViews = clipper.posts.reduce((sum, post) => sum + post.views, 0);
+    const totalPayableViews = clipper.posts.reduce(
+      (sum, post) => sum + Math.min(post.views, PAYABLE_VIEW_CAP),
+      0
+    );
+    const totalLikes = clipper.posts.reduce((sum, post) => sum + post.likes, 0);
+    const totalComments = clipper.posts.reduce((sum, post) => sum + post.comments, 0);
+    const totalShares = clipper.posts.reduce((sum, post) => sum + post.shares, 0);
+
+    // Add payableViews to each post
+    const postsWithPayable = clipper.posts.map((post) => ({
+      ...post,
+      payableViews: Math.min(post.views, PAYABLE_VIEW_CAP),
+    }));
+
+    logRequest(request, 200, startTime);
+    return NextResponse.json({
+      ...clipper,
+      posts: postsWithPayable,
+      totalViews,
+      totalPayableViews,
+      totalLikes,
+      totalComments,
+      totalShares,
+    });
+  } catch (error) {
+    logRequest(request, 500, startTime, String(error));
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  // Payable views cap: 1,000,000 per post
-  const PAYABLE_VIEW_CAP = 1_000_000;
-
-  // Calculate totals
-  const totalViews = clipper.posts.reduce((sum, post) => sum + post.views, 0);
-  const totalPayableViews = clipper.posts.reduce(
-    (sum, post) => sum + Math.min(post.views, PAYABLE_VIEW_CAP),
-    0
-  );
-  const totalLikes = clipper.posts.reduce((sum, post) => sum + post.likes, 0);
-  const totalComments = clipper.posts.reduce((sum, post) => sum + post.comments, 0);
-  const totalShares = clipper.posts.reduce((sum, post) => sum + post.shares, 0);
-
-  // Add payableViews to each post
-  const postsWithPayable = clipper.posts.map((post) => ({
-    ...post,
-    payableViews: Math.min(post.views, PAYABLE_VIEW_CAP),
-  }));
-
-  return NextResponse.json({
-    ...clipper,
-    posts: postsWithPayable,
-    totalViews,
-    totalPayableViews,
-    totalLikes,
-    totalComments,
-    totalShares,
-  });
 }
 
 // PUT update a clipper
@@ -83,22 +94,37 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { id } = await params;
-  const body = await request.json();
-  const { name, youtubeChannel, tiktokUsername, instagramUsername, clipperGroup } = body;
+  const startTime = Date.now();
 
-  const clipper = await prisma.clipper.update({
-    where: { id },
-    data: {
-      ...(name !== undefined && { name }),
-      ...(clipperGroup !== undefined && { clipperGroup }),
-      ...(youtubeChannel !== undefined && { youtubeChannel: youtubeChannel || null }),
-      ...(tiktokUsername !== undefined && { tiktokUsername: tiktokUsername || null }),
-      ...(instagramUsername !== undefined && { instagramUsername: instagramUsername || null }),
-    },
-  });
+  try {
+    const { id } = await params;
 
-  return NextResponse.json(clipper);
+    // Validate input with Zod
+    const validation = await validateBody(request, UpdateClipperSchema);
+    if (!validation.success) {
+      logRequest(request, 400, startTime, validation.error);
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+
+    const { name, clipperGroup, youtubeChannel, tiktokUsername, instagramUsername } = validation.data;
+
+    const clipper = await prisma.clipper.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(clipperGroup !== undefined && { clipperGroup }),
+        ...(youtubeChannel !== undefined && { youtubeChannel: youtubeChannel || null }),
+        ...(tiktokUsername !== undefined && { tiktokUsername: tiktokUsername || null }),
+        ...(instagramUsername !== undefined && { instagramUsername: instagramUsername || null }),
+      },
+    });
+
+    logRequest(request, 200, startTime);
+    return NextResponse.json(clipper);
+  } catch (error) {
+    logRequest(request, 500, startTime, String(error));
+    return NextResponse.json({ error: "Failed to update clipper" }, { status: 500 });
+  }
 }
 
 // DELETE a clipper
@@ -106,11 +132,19 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { id } = await params;
+  const startTime = Date.now();
 
-  await prisma.clipper.delete({
-    where: { id },
-  });
+  try {
+    const { id } = await params;
 
-  return NextResponse.json({ success: true });
+    await prisma.clipper.delete({
+      where: { id },
+    });
+
+    logRequest(request, 200, startTime);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    logRequest(request, 500, startTime, String(error));
+    return NextResponse.json({ error: "Failed to delete clipper" }, { status: 500 });
+  }
 }
