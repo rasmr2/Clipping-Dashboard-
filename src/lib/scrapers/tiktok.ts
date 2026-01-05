@@ -19,41 +19,67 @@ export class TikTokScraper implements SocialMediaScraper {
     const cleanUsername = username.replace("@", "");
 
     try {
-      const res = await fetch(
-        `https://${this.apiHost}/user/posts?unique_id=${cleanUsername}&count=30`,
-        {
+      const allVideos: PostMetrics[] = [];
+      let cursor: string | undefined = undefined;
+      let hasMore = true;
+      const maxPages = 10; // Limit to prevent infinite loops (10 pages * 35 = 350 posts max)
+      let pageCount = 0;
+
+      while (hasMore && pageCount < maxPages) {
+        const url = cursor
+          ? `https://${this.apiHost}/user/posts?unique_id=${cleanUsername}&count=35&cursor=${cursor}`
+          : `https://${this.apiHost}/user/posts?unique_id=${cleanUsername}&count=35`;
+
+        const res = await fetch(url, {
           headers: {
             "X-RapidAPI-Key": this.apiKey,
             "X-RapidAPI-Host": this.apiHost,
           },
+        });
+
+        if (!res.ok) break;
+
+        const data = await res.json();
+        const videos = data.data?.videos || [];
+
+        if (videos.length === 0) break;
+
+        const mappedVideos = videos.map((video: {
+          video_id: string;
+          title?: string;
+          cover?: string;
+          play_count: number;
+          digg_count: number;
+          comment_count: number;
+          share_count: number;
+          create_time: number;
+        }) => ({
+          postId: video.video_id,
+          postUrl: `https://tiktok.com/@${cleanUsername}/video/${video.video_id}`,
+          title: video.title,
+          thumbnail: video.cover,
+          views: video.play_count || 0,
+          likes: video.digg_count || 0,
+          comments: video.comment_count || 0,
+          shares: video.share_count || 0,
+          postedAt: new Date(video.create_time * 1000),
+        }));
+
+        allVideos.push(...mappedVideos);
+
+        // Check for pagination cursor
+        cursor = data.data?.cursor;
+        hasMore = data.data?.hasMore === true && cursor !== undefined;
+        pageCount++;
+
+        // Small delay to avoid rate limiting
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
-      );
+      }
 
-      if (!res.ok) return [];
-
-      const data = await res.json();
-      const videos = data.data?.videos || [];
-
-      return videos.map((video: {
-        video_id: string;
-        title?: string;
-        cover?: string;
-        play_count: number;
-        digg_count: number;
-        comment_count: number;
-        share_count: number;
-        create_time: number;
-      }) => ({
-        postId: video.video_id,
-        postUrl: `https://tiktok.com/@${cleanUsername}/video/${video.video_id}`,
-        title: video.title,
-        thumbnail: video.cover,
-        views: video.play_count || 0,
-        likes: video.digg_count || 0,
-        comments: video.comment_count || 0,
-        shares: video.share_count || 0,
-        postedAt: new Date(video.create_time * 1000),
-      }));
+      console.log(`TikTok: Fetched ${allVideos.length} posts for @${cleanUsername} (${pageCount} pages)`);
+      return allVideos;
     } catch (error) {
       console.error("TikTok scraper error:", error);
       return [];

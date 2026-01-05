@@ -17,14 +17,45 @@ export class YouTubeScraper implements SocialMediaScraper {
   async getChannelPosts(channelUrl: string): Promise<PostMetrics[]> {
     // Extract channel ID or handle from URL/handle string
     const { type, value } = this.extractChannelIdentifier(channelUrl);
-    if (!value) return [];
+    console.log(`YouTube: Processing channel "${channelUrl}" -> type=${type}, value=${value}`);
+    if (!value) {
+      console.log("YouTube: No value extracted, skipping");
+      return [];
+    }
 
     try {
-      // Get channel uploads playlist
-      // Use 'forHandle' for handles (@username), 'id' for channel IDs
-      const param = type === "handle" ? `forHandle=${value}` : `id=${value}`;
+      // First, try to get channel ID via search if we have a handle
+      let channelId = type === "id" ? value : null;
+
+      if (type === "handle") {
+        // Search for the channel to get its ID
+        console.log(`YouTube: Searching for channel handle: ${value}`);
+        const searchRes = await fetch(
+          `https://${this.apiHost}/search?part=snippet&q=${encodeURIComponent(value)}&type=channel&maxResults=1`,
+          {
+            headers: {
+              "X-RapidAPI-Key": this.apiKey,
+              "X-RapidAPI-Host": this.apiHost,
+            },
+          }
+        );
+
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          channelId = searchData.items?.[0]?.snippet?.channelId;
+          console.log(`YouTube: Search found channel ID: ${channelId}`);
+        }
+      }
+
+      if (!channelId) {
+        console.log("YouTube: Could not find channel ID");
+        return [];
+      }
+
+      // Get channel uploads playlist using channel ID
+      console.log(`YouTube: Fetching channel details for ID: ${channelId}`);
       const channelRes = await fetch(
-        `https://${this.apiHost}/channels?part=contentDetails&${param}`,
+        `https://${this.apiHost}/channels?part=contentDetails&id=${channelId}`,
         {
           headers: {
             "X-RapidAPI-Key": this.apiKey,
@@ -33,11 +64,21 @@ export class YouTubeScraper implements SocialMediaScraper {
         }
       );
 
-      if (!channelRes.ok) return [];
+      if (!channelRes.ok) {
+        console.log(`YouTube: Channel request failed with status ${channelRes.status}`);
+        const errorText = await channelRes.text();
+        console.log(`YouTube: Error response: ${errorText.substring(0, 200)}`);
+        return [];
+      }
 
       const channelData = await channelRes.json();
+      console.log(`YouTube: Channel data items: ${channelData.items?.length || 0}`);
       const uploadsPlaylistId = channelData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-      if (!uploadsPlaylistId) return [];
+      if (!uploadsPlaylistId) {
+        console.log("YouTube: No uploads playlist found");
+        return [];
+      }
+      console.log(`YouTube: Found uploads playlist: ${uploadsPlaylistId}`);
 
       // Get videos from uploads playlist
       const videosRes = await fetch(
