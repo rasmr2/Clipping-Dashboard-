@@ -14,6 +14,10 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Error fetching refresh status:", error);
-    return NextResponse.json({ lastRefreshedAt: null });
+    return NextResponse.json({
+      lastRefreshedAt: null,
+      error: error instanceof Error ? error.message : "Unknown error",
+      dbUrl: process.env.TURSO_DATABASE_URL ? "set" : "not set"
+    });
   }
 }
