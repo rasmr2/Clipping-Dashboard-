@@ -1,0 +1,73 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// A clipper who creates clips
+model Clipper {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Social media account links
+  youtubeChannel    String?
+  tiktokUsername    String?
+  instagramUsername String?
+
+  // Relations
+  posts Post[]
+}
+
+// A single post/video/clip on a platform
+model Post {
+  id        String   @id @default(cuid())
+  clipperId String
+  clipper   Clipper  @relation(fields: [clipperId], references: [id], onDelete: Cascade)
+
+  platform  String   // "youtube", "tiktok", "instagram"
+  postUrl   String   @unique
+  postId    String?  // Platform-specific post ID
+  title     String?
+  thumbnail String?
+
+  // Latest metrics (cached for quick leaderboard)
+  views     Int      @default(0)
+  likes     Int      @default(0)
+  comments  Int      @default(0)
+  shares    Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  postedAt  DateTime? // When the post was actually published
+
+  // Historical metric snapshots
+  snapshots MetricSnapshot[]
+
+  @@index([clipperId])
+  @@index([platform])
+}
+
+// Historical snapshot of metrics for a post at a point in time
+model MetricSnapshot {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  views     Int
+  likes     Int
+  comments  Int
+  shares    Int
+
+  recordedAt DateTime @default(now())
+
+  @@index([postId])
+  @@index([recordedAt])
+}
