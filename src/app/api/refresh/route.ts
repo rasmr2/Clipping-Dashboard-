@@ -154,8 +154,8 @@ async function upsertPost(
 }
 
 // Vercel Cron handler - runs daily at midnight UTC
-export async function GET() {
+export async function GET(request: NextRequest) {
   // This endpoint can be triggered by Vercel Cron
   // Configure in vercel.json: { "crons": [{ "path": "/api/refresh", "schedule": "0 0 * * *" }] }
-  return POST();
+  return POST(request);
 }
