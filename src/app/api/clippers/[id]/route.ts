@@ -54,8 +54,8 @@ export async function GET(
       return NextResponse.json({ error: "Clipper not found" }, { status: 404 });
     }
 
-    // Payable views cap: 1,000,000 per post
-    const PAYABLE_VIEW_CAP = 1_000_000;
+    // Payable views cap: 500,000 per post
+    const PAYABLE_VIEW_CAP = 500_000;
 
     // Calculate totals
     const totalViews = clipper.posts.reduce((sum, post) => sum + post.views, 0);

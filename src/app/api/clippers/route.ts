@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Payable views cap: 1,000,000 per post
-    const PAYABLE_VIEW_CAP = 1_000_000;
+    // Payable views cap: 500,000 per post
+    const PAYABLE_VIEW_CAP = 500_000;
 
     // Calculate totals for each clipper/page
     const clippersWithStats = clippers.map((clipper) => {

@@ -272,9 +272,9 @@ export default function ClipperDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                     <div>
                       <p className="text-green-600">Payable</p>
-                      <p className={`font-semibold ${post.views > 1_000_000 ? "text-green-600" : ""}`}>
+                      <p className={`font-semibold ${post.views > 500_000 ? "text-green-600" : ""}`}>
                         {formatNumber(post.payableViews)}
-                        {post.views > 1_000_000 && <span className="text-xs ml-1">(capped)</span>}
+                        {post.views > 500_000 && <span className="text-xs ml-1">(capped)</span>}
                       </p>
                     </div>
                     <div>
